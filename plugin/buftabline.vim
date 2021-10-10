@@ -29,10 +29,13 @@ endif
 
 scriptencoding utf-8
 
-hi default link BufTabLineCurrent TabLineSel
-hi default link BufTabLineActive  PmenuSel
-hi default link BufTabLineHidden  TabLine
-hi default link BufTabLineFill    TabLineFill
+hi default link BufTabLineCurrent         TabLineSel
+hi default link BufTabLineActive          PmenuSel
+hi default link BufTabLineHidden          TabLine
+hi default link BufTabLineFill            TabLineFill
+hi default link BufTabLineModifiedCurrent BufTabLineCurrent
+hi default link BufTabLineModifiedActive  BufTabLineActive
+hi default link BufTabLineModifiedHidden  BufTabLineHidden
 
 let g:buftabline_numbers    = get(g:, 'buftabline_numbers',    0)
 let g:buftabline_indicators = get(g:, 'buftabline_indicators', 0)
@@ -44,8 +47,18 @@ function! buftabline#user_buffers() " help buffers are always unlisted, but quic
 	return filter(range(1,bufnr('$')),'buflisted(v:val) && "quickfix" !=? getbufvar(v:val, "&buftype")')
 endfunction
 
+function! s:switch_buffer(bufnum, clicks, button, mod)
+	execute 'buffer' a:bufnum
+endfunction
+
+function s:SID()
+	return matchstr(expand('<sfile>'), '<SNR>\d\+_')
+endfunction
+
 let s:dirsep = fnamemodify(getcwd(),':p')[-1:]
 let s:centerbuf = winbufnr(0)
+let s:tablineat = has('tablineat')
+let s:sid = s:SID() | delfunction s:SID
 function! buftabline#render()
 	let show_num = g:buftabline_numbers == 1
 	let show_ord = g:buftabline_numbers == 2
@@ -63,7 +76,7 @@ function! buftabline#render()
 	let screen_num = 0
 	for bufnum in bufnums
 		let screen_num = show_num ? bufnum : show_ord ? screen_num + 1 : ''
-		let tab = { 'num': bufnum }
+		let tab = { 'num': bufnum, 'pre': '' }
 		let tab.hilite = currentbuf == bufnum ? 'Current' : bufwinnr(bufnum) > 0 ? 'Active' : 'Hidden'
 		if currentbuf == bufnum | let [centerbuf, s:centerbuf] = [bufnum, bufnum] | endif
 		let bufpath = bufname(bufnum)
@@ -71,8 +84,12 @@ function! buftabline#render()
 			let tab.path = fnamemodify(bufpath, ':p:~:.')
 			let tab.sep = strridx(tab.path, s:dirsep, strlen(tab.path) - 2) " keep trailing dirsep
 			let tab.label = tab.path[tab.sep + 1:]
-			let pre = ( show_mod && getbufvar(bufnum, '&mod') ? '+' : '' ) . screen_num
-			let tab.pre = strlen(pre) ? pre . ' ' : ''
+			let pre = screen_num
+			if getbufvar(bufnum, '&mod')
+				let tab.hilite = 'Modified' . tab.hilite
+				if show_mod | let pre = '+' . pre | endif
+			endif
+			if strlen(pre) | let tab.pre = pre . ' ' | endif
 			let tabs_per_tail[tab.label] = get(tabs_per_tail, tab.label, 0) + 1
 			let path_tabs += [tab]
 		elseif -1 < index(['nofile','acwrite'], getbufvar(bufnum, '&buftype')) " scratch buffer
@@ -104,9 +121,10 @@ function! buftabline#render()
 
 	" 2. sum the string lengths for the left and right halves
 	let currentside = lft
+	let lpad_width = strwidth(lpad)
 	for tab in tabs
-		let tab.label = lpad . get(tab, 'pre', '') . tab.label . ' '
-		let tab.width = strwidth(strtrans(tab.label))
+		let tab.width = lpad_width + strwidth(tab.pre) + strwidth(tab.label) + 1
+		let tab.label = lpad . tab.pre . substitute(strtrans(tab.label), '%', '%%', 'g') . ' '
 		if centerbuf == tab.num
 			let halfwidth = tab.width / 2
 			let lft.width += halfwidth
@@ -145,7 +163,9 @@ function! buftabline#render()
 	if len(tabs) | let tabs[0].label = substitute(tabs[0].label, lpad, ' ', '') | endif
 
 	let swallowclicks = '%'.(1 + tabpagenr('$')).'X'
-	return swallowclicks . join(map(tabs,'printf("%%#BufTabLine%s#%s",v:val.hilite,strtrans(v:val.label))'),'') . '%#BufTabLineFill#'
+	return s:tablineat
+		\ ? join(map(tabs,'"%#BufTabLine".v:val.hilite."#" . "%".v:val.num."@'.s:sid.'switch_buffer@" . strtrans(v:val.label)'),'') . '%#BufTabLineFill#' . swallowclicks
+		\ : swallowclicks . join(map(tabs,'"%#BufTabLine".v:val.hilite."#" . strtrans(v:val.label)'),'') . '%#BufTabLineFill#'
 endfunction
 
 function! buftabline#update(zombie)
@@ -170,6 +190,7 @@ autocmd!
 autocmd VimEnter  * call buftabline#update(0)
 autocmd TabEnter  * call buftabline#update(0)
 autocmd BufAdd    * call buftabline#update(0)
+autocmd FileType qf call buftabline#update(0)
 autocmd BufDelete * call buftabline#update(str2nr(expand('<abuf>')))
 augroup END
 
