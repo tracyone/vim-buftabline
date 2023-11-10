@@ -195,6 +195,8 @@ function buftabline#MyTabLine()
                 let n .= '[H]' . fnamemodify( bufname(b), ':t:s/.txt$//' )
             elseif getbufvar( b, "&buftype" ) == 'quickfix'
                 let n .= '[Q]'
+            elseif getbufvar( b, "&buftype" ) == 'nofile'
+                continue
             else
                 let n .= pathshorten(bufname(b))
             endif
