@@ -242,8 +242,12 @@ endfunction
 
 function! buftabline#update(zombie)
     set tabline=%!buftabline#MyTabLine()  " custom tab pages line
-    if tabpagenr('$') > 1 | set showtabline=2 | return | endif
-	set guioptions-=e
+    if tabpagenr('$') > 1  
+        setlocal guioptions+=e
+        set showtabline=2  
+        return 
+    endif
+    setlocal guioptions-=e
 	if 0 == g:buftabline_show
 		set showtabline=1
 		return
